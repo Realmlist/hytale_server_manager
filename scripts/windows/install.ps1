@@ -144,6 +144,52 @@ try {
 }
 Pop-Location
 
+# Setup .env file
+Write-Status "Setting up environment configuration..."
+if (-not (Test-Path "$InstallPath\.env")) {
+    if (Test-Path "$InstallPath\.env.example") {
+        Copy-Item "$InstallPath\.env.example" "$InstallPath\.env"
+        Write-Success "Created .env from template"
+    }
+}
+
+# Generate secrets if needed
+if (Test-Path "$InstallPath\.env") {
+    Write-Status "Generating secrets if needed..."
+    Push-Location $InstallPath
+    try {
+        $secretScript = @"
+const fs = require('fs');
+const crypto = require('crypto');
+let env = fs.readFileSync('.env', 'utf8');
+let changed = false;
+if (/^JWT_SECRET=$/m.test(env)) {
+  env = env.replace(/^JWT_SECRET=$/m, 'JWT_SECRET=' + crypto.randomBytes(64).toString('hex'));
+  changed = true;
+}
+if (/^JWT_REFRESH_SECRET=$/m.test(env)) {
+  env = env.replace(/^JWT_REFRESH_SECRET=$/m, 'JWT_REFRESH_SECRET=' + crypto.randomBytes(64).toString('hex'));
+  changed = true;
+}
+if (/^SETTINGS_ENCRYPTION_KEY=$/m.test(env)) {
+  env = env.replace(/^SETTINGS_ENCRYPTION_KEY=$/m, 'SETTINGS_ENCRYPTION_KEY=' + crypto.randomBytes(16).toString('hex'));
+  changed = true;
+}
+if (changed) {
+  fs.writeFileSync('.env', env);
+  console.log('Generated missing secrets');
+} else {
+  console.log('Secrets already configured');
+}
+"@
+        & node -e $secretScript
+        Write-Success "Environment configured"
+    } catch {
+        Write-Warning "Secret generation warning: $_"
+    }
+    Pop-Location
+}
+
 # Generate Prisma client
 Write-Status "Setting up database..."
 Push-Location $InstallPath

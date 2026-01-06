@@ -203,6 +203,46 @@ cd "$INSTALL_PATH"
 npm ci --production --silent
 print_success "Dependencies installed"
 
+# Setup .env file
+print_status "Setting up environment configuration..."
+if [[ ! -f "$INSTALL_PATH/.env" ]]; then
+    if [[ -f "$INSTALL_PATH/.env.example" ]]; then
+        cp "$INSTALL_PATH/.env.example" "$INSTALL_PATH/.env"
+        print_success "Created .env from template"
+    fi
+fi
+
+# Generate secrets if needed
+if [[ -f "$INSTALL_PATH/.env" ]]; then
+    print_status "Generating secrets if needed..."
+    cd "$INSTALL_PATH"
+    node -e "
+const fs = require('fs');
+const crypto = require('crypto');
+let env = fs.readFileSync('.env', 'utf8');
+let changed = false;
+if (/^JWT_SECRET=$/m.test(env)) {
+  env = env.replace(/^JWT_SECRET=$/m, 'JWT_SECRET=' + crypto.randomBytes(64).toString('hex'));
+  changed = true;
+}
+if (/^JWT_REFRESH_SECRET=$/m.test(env)) {
+  env = env.replace(/^JWT_REFRESH_SECRET=$/m, 'JWT_REFRESH_SECRET=' + crypto.randomBytes(64).toString('hex'));
+  changed = true;
+}
+if (/^SETTINGS_ENCRYPTION_KEY=$/m.test(env)) {
+  env = env.replace(/^SETTINGS_ENCRYPTION_KEY=$/m, 'SETTINGS_ENCRYPTION_KEY=' + crypto.randomBytes(16).toString('hex'));
+  changed = true;
+}
+if (changed) {
+  fs.writeFileSync('.env', env);
+  console.log('Generated missing secrets');
+} else {
+  console.log('Secrets already configured');
+}
+"
+    print_success "Environment configured"
+fi
+
 # Setup Prisma
 print_status "Setting up database..."
 npx prisma generate 2>/dev/null || true
