@@ -25,7 +25,7 @@ import logger from '../utils/logger';
 /**
  * Java Server Adapter
  *
- * This adapter runs a Java JAR file (e.g., Minecraft server).
+ * This adapter runs a Java JAR file (e.g., Hytale server).
  * It manages the process lifecycle and captures stdout/stderr for logs.
  */
 export class JavaServerAdapter implements IServerAdapter {

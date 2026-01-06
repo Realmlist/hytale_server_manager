@@ -171,7 +171,7 @@ export class LogTailService {
 
   /**
    * Parse a log line into a structured LogEntry
-   * Handles common Minecraft/Java server log formats
+   * Handles common Java server log formats
    */
   private parseLogLine(line: string): LogEntry | null {
     if (!line.trim()) return null;
@@ -186,7 +186,7 @@ export class LogTailService {
     let message = line;
     let source: string | undefined;
 
-    // Try to parse Minecraft-style format: [HH:MM:SS] [Source/LEVEL]: Message
+    // Try to parse format: [HH:MM:SS] [Source/LEVEL]: Message
     const minecraftMatch = line.match(/^\[(\d{2}:\d{2}:\d{2})\]\s*\[([^\]]+)\/([A-Z]+)\]:\s*(.+)$/);
     if (minecraftMatch) {
       const [, time, src, lvl, msg] = minecraftMatch;
