@@ -90,7 +90,7 @@ jobs:
           mkdir -p release-package/data/{db,logs,servers,backups}
 
           # Create install script for Windows
-          printf '@echo off\r\necho ======================================\r\necho   Hytale Server Manager - Setup\r\necho ======================================\r\necho.\r\ncd /d "%%~dp0"\r\necho Setting up database...\r\ncall node_modules\\.bin\\prisma db push\r\necho.\r\necho Setup complete!\r\necho.\r\necho Run start.bat to launch the application.\r\npause\r\n' > release-package/install.bat
+          printf '@echo off\r\necho ======================================\r\necho   Hytale Server Manager - Setup\r\necho ======================================\r\necho.\r\ncd /d "%%~dp0"\r\necho Setting up database...\r\nnode node_modules\\prisma\\build\\index.js db push\r\necho.\r\necho Setup complete!\r\necho.\r\necho Run start.bat to launch the application.\r\npause\r\n' > release-package/install.bat
 
           # Create install script for Linux
           printf '#!/bin/bash\necho "======================================"\necho "  Hytale Server Manager - Setup"\necho "======================================"\necho\ncd "$(dirname "$0")"\necho "Setting up database..."\n./node_modules/.bin/prisma db push\necho\necho "Setup complete!"\necho\necho "Run ./start.sh to launch the application."\n' > release-package/install.sh
