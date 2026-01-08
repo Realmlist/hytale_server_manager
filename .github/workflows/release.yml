@@ -370,7 +370,7 @@ jobs:
           node dist\index.js
           echo.
           echo Application stopped.
-          pause
+          
           ENDBAT
           sed -i 's/^          //' release-package/start.bat
           unix2dos release-package/start.bat 2>/dev/null || sed -i 's/$/\r/' release-package/start.bat

@@ -50,4 +50,4 @@ if !EXIT_CODE!==100 (
 :: If we get here, the app stopped normally
 echo.
 echo Application stopped. Exit code: !EXIT_CODE!
-pause
+
