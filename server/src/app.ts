@@ -26,11 +26,13 @@ import { PermissionService } from './services/PermissionService';
 import { SettingsService } from './services/SettingsService';
 import { FtpStorageService } from './services/FtpStorageService';
 import { ActivityLogService } from './services/ActivityLogService';
+import { ModProviderService } from './services/ModProviderService';
 
 // Routes
 import { createServerRoutes } from './routes/servers';
 import { createSettingsRoutes, applyDiscordSettings, applyFtpSettings } from './routes/settings';
 import { createModtaleRoutes } from './routes/modtale';
+import { createModsRouter } from './routes/mods';
 import { createAuthRoutes } from './routes/auth';
 import { createUserRoutes } from './routes/users';
 import { createNetworkRoutes } from './routes/networks';
@@ -76,6 +78,7 @@ export class App {
   private settingsService: SettingsService;
   private ftpService: FtpStorageService;
   private activityLogService: ActivityLogService;
+  private modProviderService: ModProviderService;
 
   // WebSocket handlers
   private serverEvents: ServerEvents;
@@ -101,6 +104,9 @@ export class App {
 
     // Initialize activity log service
     this.activityLogService = new ActivityLogService(this.prisma);
+
+    // Initialize mod provider service
+    this.modProviderService = new ModProviderService(this.settingsService);
 
     // Make services available to middleware via Express app
     this.express.set('permissionService', this.permissionService);
@@ -208,7 +214,8 @@ export class App {
       this.metricsService,
       this.worldsService,
       this.alertsService,
-      this.automationRulesService
+      this.automationRulesService,
+      this.modProviderService
     ));
 
     this.express.use(
@@ -218,6 +225,9 @@ export class App {
     );
 
     this.express.use('/api/modtale', authenticate, createModtaleRoutes());
+
+    // Unified mod provider routes (new)
+    this.express.use('/api/mods', createModsRouter(this.modProviderService));
 
     this.express.use('/api/users', authenticate, createUserRoutes());
 
@@ -312,6 +322,10 @@ export class App {
       await applyDiscordSettings(this.settingsService, this.discordService);
       await applyFtpSettings(this.settingsService, this.ftpService);
       logger.info('Settings applied to services');
+
+      // Initialize mod provider service (loads API keys and registers providers)
+      await this.modProviderService.initialize();
+      logger.info('Mod provider service initialized');
 
       // Recover orphaned servers (servers that were running before manager restart)
       await this.serverService.recoverOrphanedServers();

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Input } from '../../components/ui';
-import { Save, Bell, Check, X, Key, ExternalLink, Lock, Eye, EyeOff, HardDrive, Server } from 'lucide-react';
+import { Save, Bell, Check, X, ExternalLink, Lock, Eye, EyeOff, HardDrive, Server, Package } from 'lucide-react';
 import { api } from '../../services/api';
-import { useModtaleStore } from '../../stores/modtaleStore';
+import { useModProviderStore } from '../../stores/modProviderStore';
 import { authService, AuthError } from '../../services/auth';
 import type { ChangePasswordRequest } from '../../services/auth';
 
@@ -40,7 +40,7 @@ const ALL_EVENTS = [
 ];
 
 export const SettingsPage = () => {
-  const { apiKey, setApiKey } = useModtaleStore();
+  const { providers, loadProviders, configureProvider } = useModProviderStore();
 
   const [settings, setSettings] = useState<DiscordSettings>({
     enabled: false,
@@ -50,13 +50,11 @@ export const SettingsPage = () => {
     enabledEvents: [],
     mentionRoleId: '',
   });
-  const [modtaleApiKey, setModtaleApiKey] = useState(apiKey || '');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [modtaleSuccess, setModtaleSuccess] = useState<string | null>(null);
 
   // Password change state
   const [passwordForm, setPasswordForm] = useState<ChangePasswordRequest>({
@@ -87,9 +85,16 @@ export const SettingsPage = () => {
   const [ftpSuccess, setFtpSuccess] = useState<string | null>(null);
   const [showFtpPassword, setShowFtpPassword] = useState(false);
 
+  // Mod provider state
+  const [providerApiKeys, setProviderApiKeys] = useState<Record<string, string>>({});
+  const [providerSaving, setProviderSaving] = useState<Record<string, boolean>>({});
+  const [providerSuccess, setProviderSuccess] = useState<Record<string, string>>({});
+  const [providerError, setProviderError] = useState<Record<string, string>>({});
+
   useEffect(() => {
     loadSettings();
     loadFtpSettings();
+    loadProviders();
   }, []);
 
   const loadSettings = async () => {
@@ -178,18 +183,25 @@ export const SettingsPage = () => {
     }
   };
 
-  const handleModtaleSave = async () => {
-    setModtaleSuccess(null);
-    setError(null);
-    setSaving(true);
+  const handleProviderSave = async (providerId: string) => {
+    const apiKey = providerApiKeys[providerId];
+    if (!apiKey?.trim()) return;
+
+    setProviderSaving(prev => ({ ...prev, [providerId]: true }));
+    setProviderError(prev => ({ ...prev, [providerId]: '' }));
+    setProviderSuccess(prev => ({ ...prev, [providerId]: '' }));
 
     try {
-      await setApiKey(modtaleApiKey);
-      setModtaleSuccess('Modtale API key saved successfully! You can now browse and install mods.');
+      await configureProvider(providerId, apiKey);
+      setProviderSuccess(prev => ({ ...prev, [providerId]: 'API key saved successfully!' }));
+      setProviderApiKeys(prev => ({ ...prev, [providerId]: '' })); // Clear the input after success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save API key');
+      setProviderError(prev => ({
+        ...prev,
+        [providerId]: err instanceof Error ? err.message : 'Failed to save API key',
+      }));
     } finally {
-      setSaving(false);
+      setProviderSaving(prev => ({ ...prev, [providerId]: false }));
     }
   };
 
@@ -249,79 +261,131 @@ export const SettingsPage = () => {
         <p className="text-text-secondary mt-1">Configure application settings</p>
       </div>
 
-      {/* Modtale API Key */}
+      {/* Mod Providers */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Key size={20} />
-                Modtale API Key
+                <Package size={20} />
+                Mod Providers
               </CardTitle>
-              <CardDescription>Configure your Modtale Enterprise API key to browse and install mods</CardDescription>
+              <CardDescription>Configure API keys for mod providers to browse and install mods from different sources</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {modtaleSuccess && (
-            <div className="bg-green-500/10 text-green-500 p-3 rounded mb-4 flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Check size={16} />
-                {modtaleSuccess}
-              </span>
-              <button onClick={() => setModtaleSuccess(null)}>
-                <X size={16} />
-              </button>
-            </div>
-          )}
+          <div className="space-y-6">
+            {providers.length === 0 ? (
+              <p className="text-text-secondary text-sm">Loading providers...</p>
+            ) : (
+              providers.map((provider) => (
+                <div key={provider.id} className="border rounded-lg p-4 dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                        {provider.iconUrl ? (
+                          <img src={provider.iconUrl} alt={provider.displayName} className="w-6 h-6" />
+                        ) : (
+                          <Package size={20} className="text-text-secondary" />
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-text-primary">{provider.displayName}</h4>
+                        <p className="text-xs text-text-secondary">
+                          {provider.requiresApiKey
+                            ? provider.isConfigured
+                              ? 'API key configured'
+                              : 'API key required'
+                            : 'No API key required'}
+                        </p>
+                      </div>
+                    </div>
+                    {provider.isConfigured && (
+                      <span className="flex items-center gap-1 text-green-500 text-sm">
+                        <Check size={16} />
+                        Configured
+                      </span>
+                    )}
+                  </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">API Key</label>
-              <Input
-                type="password"
-                placeholder="Enter your Modtale Enterprise API key"
-                value={modtaleApiKey}
-                onChange={(e) => setModtaleApiKey(e.target.value)}
-              />
-              <div className="flex items-center gap-2 mt-2">
-                <p className="text-xs text-text-secondary">
-                  Don't have an API key?
-                </p>
-                <a
-                  href="https://modtale.net/dashboard/settings/api-keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-accent-primary hover:underline flex items-center gap-1"
-                >
-                  Get one from Modtale
-                  <ExternalLink size={12} />
-                </a>
-              </div>
-            </div>
+                  {provider.requiresApiKey && (
+                    <>
+                      {providerError[provider.id] && (
+                        <div className="bg-red-500/10 text-red-500 p-2 rounded mb-3 text-sm flex items-center justify-between">
+                          <span>{providerError[provider.id]}</span>
+                          <button onClick={() => setProviderError(prev => ({ ...prev, [provider.id]: '' }))}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                      )}
+                      {providerSuccess[provider.id] && (
+                        <div className="bg-green-500/10 text-green-500 p-2 rounded mb-3 text-sm flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            <Check size={14} />
+                            {providerSuccess[provider.id]}
+                          </span>
+                          <button onClick={() => setProviderSuccess(prev => ({ ...prev, [provider.id]: '' }))}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                      )}
 
-            <div className="flex gap-3 pt-4 border-t">
-              <Button
-                variant="primary"
-                onClick={handleModtaleSave}
-                disabled={!modtaleApiKey.trim() || saving}
-              >
-                <Save size={16} className="mr-2" />
-                {saving ? 'Saving...' : 'Save API Key'}
-              </Button>
-              {apiKey && (
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setModtaleApiKey('');
-                    setApiKey('');
-                    setModtaleSuccess('API key cleared');
-                  }}
-                >
-                  Clear API Key
-                </Button>
-              )}
-            </div>
+                      <div className="flex gap-2">
+                        <Input
+                          type="password"
+                          placeholder={provider.isConfigured ? '(Configured - enter new key to update)' : 'Enter API key'}
+                          value={providerApiKeys[provider.id] || ''}
+                          onChange={(e) => setProviderApiKeys(prev => ({ ...prev, [provider.id]: e.target.value }))}
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleProviderSave(provider.id)}
+                          disabled={!providerApiKeys[provider.id]?.trim() || providerSaving[provider.id]}
+                        >
+                          {providerSaving[provider.id] ? 'Saving...' : 'Save'}
+                        </Button>
+                      </div>
+
+                      {provider.id === 'curseforge' && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <p className="text-xs text-text-secondary">
+                            Get an API key from
+                          </p>
+                          <a
+                            href="https://console.curseforge.com"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-accent-primary hover:underline flex items-center gap-1"
+                          >
+                            CurseForge Console
+                            <ExternalLink size={12} />
+                          </a>
+                        </div>
+                      )}
+                      {provider.id === 'modtale' && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <p className="text-xs text-text-secondary">
+                            Get an API key from
+                          </p>
+                          <a
+                            href="https://modtale.net/dashboard/developer"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-accent-primary hover:underline flex items-center gap-1"
+                          >
+                            Modtale Dashboard
+                            <ExternalLink size={12} />
+                          </a>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

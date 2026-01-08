@@ -10,6 +10,7 @@ import { MetricsService } from '../services/MetricsService';
 import { WorldsService } from '../services/WorldsService';
 import { AlertsService } from '../services/AlertsService';
 import { AutomationRulesService } from '../services/AutomationRulesService';
+import { ModProviderService } from '../services/ModProviderService';
 import { requirePermission, AuthenticatedRequest } from '../middleware/auth';
 import { PERMISSIONS } from '../permissions/definitions';
 import { ActivityLogService } from '../services/ActivityLogService';
@@ -28,7 +29,8 @@ export function createServerRoutes(
   metricsService: MetricsService,
   worldsService: WorldsService,
   alertsService: AlertsService,
-  automationRulesService: AutomationRulesService
+  automationRulesService: AutomationRulesService,
+  modProviderService?: ModProviderService  // Optional for backward compatibility during transition
 ): Router {
   const router = Router();
 
@@ -491,7 +493,20 @@ export function createServerRoutes(
 
   /**
    * POST /api/servers/:id/mods
-   * Install a mod/modpack - downloads from Modtale API and extracts to plugins folder
+   * Install a mod/modpack - downloads from provider API and extracts to plugins folder
+   *
+   * Request body:
+   * {
+   *   metadata: {
+   *     providerId?: string,  // Optional: 'modtale' or 'curseforge' (defaults to 'modtale')
+   *     projectId: string,
+   *     versionId: string,
+   *     versionName?: string,
+   *     projectTitle: string,
+   *     projectIconUrl?: string,
+   *     classification: string,
+   *   }
+   * }
    */
   router.post('/:id/mods', requirePermission(PERMISSIONS.MODS_INSTALL), async (req: Request, res: Response): Promise<void> => {
     logger.info(`POST /api/servers/${req.params.id}/mods - Request received`);
@@ -505,7 +520,7 @@ export function createServerRoutes(
         return;
       }
 
-      const { projectId, versionId, versionName } = metadata;
+      const { projectId, versionId, versionName, providerId = 'modtale' } = metadata;
 
       if (!projectId || !versionId) {
         res.status(400).json({ error: 'projectId and versionId are required' });
@@ -514,34 +529,65 @@ export function createServerRoutes(
 
       // Use versionName for download URL (API expects version number, not UUID)
       const downloadVersion = versionName || versionId;
-      logger.info(`Installing mod ${projectId} version ${downloadVersion} to server ${req.params.id}`);
+      logger.info(`Installing mod ${projectId} version ${downloadVersion} from ${providerId} to server ${req.params.id}`);
 
-      // Download the mod file from Modtale API
-      const { modtaleApiService } = await import('../services/ModtaleApiService');
+      // Ensure providerId is set in metadata
+      metadata.providerId = providerId;
 
-      // Check if API key is configured
-      if (!modtaleApiService.getApiKey()) {
-        logger.error('Modtale API key not configured');
-        res.status(500).json({ error: 'Modtale API key not configured. Set it in Settings.' });
-        return;
-      }
-
-      logger.info(`Downloading mod from Modtale API...`);
       let downloadStream;
-      try {
-        downloadStream = await modtaleApiService.downloadVersion(projectId, downloadVersion);
-      } catch (downloadError: any) {
-        // If versionName failed, try with versionId as fallback
-        if (downloadVersion !== versionId) {
-          logger.info(`Download with versionName failed, trying versionId: ${versionId}`);
-          try {
-            downloadStream = await modtaleApiService.downloadVersion(projectId, versionId);
-          } catch (fallbackError: any) {
-            logger.error(`Both download attempts failed`);
-            throw new Error(`Download failed: This mod/modpack may not have downloadable files available.`);
+
+      // Use ModProviderService if available and provider is specified
+      if (modProviderService && modProviderService.hasProvider(providerId)) {
+        logger.info(`Using ModProviderService for provider: ${providerId}`);
+
+        const provider = modProviderService.getProvider(providerId);
+        if (!provider || !provider.isConfigured()) {
+          res.status(500).json({ error: `${providerId} API key not configured. Set it in Settings.` });
+          return;
+        }
+
+        try {
+          downloadStream = await modProviderService.downloadVersion(providerId, projectId, downloadVersion);
+        } catch (downloadError: any) {
+          // If versionName failed, try with versionId as fallback
+          if (downloadVersion !== versionId) {
+            logger.info(`Download with versionName failed, trying versionId: ${versionId}`);
+            try {
+              downloadStream = await modProviderService.downloadVersion(providerId, projectId, versionId);
+            } catch (fallbackError: any) {
+              logger.error(`Both download attempts failed`);
+              throw new Error(`Download failed: This mod/modpack may not have downloadable files available.`);
+            }
+          } else {
+            throw downloadError;
           }
-        } else {
-          throw downloadError;
+        }
+      } else {
+        // Fallback to legacy Modtale-only approach for backward compatibility
+        logger.info(`Using legacy ModtaleApiService (no ModProviderService or provider not found)`);
+
+        const { modtaleApiService } = await import('../services/ModtaleApiService');
+
+        if (!modtaleApiService.getApiKey()) {
+          logger.error('Modtale API key not configured');
+          res.status(500).json({ error: 'Modtale API key not configured. Set it in Settings.' });
+          return;
+        }
+
+        try {
+          downloadStream = await modtaleApiService.downloadVersion(projectId, downloadVersion);
+        } catch (downloadError: any) {
+          if (downloadVersion !== versionId) {
+            logger.info(`Download with versionName failed, trying versionId: ${versionId}`);
+            try {
+              downloadStream = await modtaleApiService.downloadVersion(projectId, versionId);
+            } catch (fallbackError: any) {
+              logger.error(`Both download attempts failed`);
+              throw new Error(`Download failed: This mod/modpack may not have downloadable files available.`);
+            }
+          } else {
+            throw downloadError;
+          }
         }
       }
 

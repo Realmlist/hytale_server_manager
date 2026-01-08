@@ -96,6 +96,7 @@ export interface Mod {
 }
 
 export interface ModMetadata {
+  providerId?: string;  // Provider ID (modtale, curseforge, etc.) - defaults to 'modtale'
   projectId: string;
   projectTitle: string;
   projectIconUrl?: string;

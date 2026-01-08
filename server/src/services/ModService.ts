@@ -54,6 +54,7 @@ export class ModService {
     const mod = await this.prisma.mod.create({
       data: {
         serverId,
+        providerId: metadata.providerId || 'modtale',  // Default to modtale for backward compatibility
         projectId: metadata.projectId,
         projectTitle: metadata.projectTitle,
         projectIconUrl: metadata.projectIconUrl,

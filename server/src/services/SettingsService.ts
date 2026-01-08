@@ -37,6 +37,9 @@ const SETTING_DEFINITIONS: SettingDefinition[] = [
   // Modtale settings
   { key: 'modtale.apiKey', category: 'modtale', encrypted: true, description: 'Modtale API key', envVar: 'MODTALE_API_KEY' },
 
+  // CurseForge settings
+  { key: 'curseforge.apiKey', category: 'curseforge', encrypted: true, description: 'CurseForge API key', envVar: 'CURSEFORGE_API_KEY' },
+
   // System settings
   { key: 'system.migrated', category: 'system', encrypted: false, description: 'Whether settings have been migrated from env vars', defaultValue: 'false' },
 ];
@@ -48,6 +51,7 @@ const SENSITIVE_KEYS = new Set([
   'discord.webhookUrl',
   'ftp.password',
   'modtale.apiKey',
+  'curseforge.apiKey',
 ]);
 
 /**

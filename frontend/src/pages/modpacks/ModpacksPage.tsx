@@ -3,27 +3,46 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Input, Badge, DataTable, SearchableSelect } from '../../components/ui';
 import type { Column } from '../../components/ui';
 import { Download, AlertCircle, Settings, Search, X, ExternalLink, Grid, List, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useModtaleStore } from '../../stores/modtaleStore';
+import { useModProviderStore, useIsCurrentProviderConfigured } from '../../stores/modProviderStore';
 import { useToast } from '../../stores/toastStore';
 import { useInstallationQueueStore } from '../../stores/installationQueueStore';
-import { searchProjects } from '../../services/modtaleApi';
-import type { ModtaleProject } from '../../types/modtale';
+import * as modProviderApi from '../../services/modProviderApi';
+import type { UnifiedProject } from '../../types/modProvider';
 import { ServerSelectionModal } from '../../components/modals/ServerSelectionModal';
+import { ProviderSelector, ProviderBadge } from '../../components/mods/ProviderSelector';
 import api from '../../services/api';
 
 export const ModpacksPage = () => {
   const navigate = useNavigate();
   const toast = useToast();
-  const { apiKey } = useModtaleStore();
+  const {
+    selectedProvider,
+    providers,
+    loadProviders,
+    searchResults,
+    multiSearchResults,
+    searchLoading,
+    searchError,
+    search,
+    setSearchQuery: setStoreSearchQuery,
+    setSearchClassification,
+    searchPage,
+    setSearchPage,
+  } = useModProviderStore();
+  const isProviderConfigured = useIsCurrentProviderConfigured();
   const { addToQueue } = useInstallationQueueStore();
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [modpacks, setModpacks] = useState<ModtaleProject[]>([]);
-  const [totalResults, setTotalResults] = useState(0);
   const [showInstallModal, setShowInstallModal] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<ModtaleProject | null>(null);
+  const [selectedProject, setSelectedProject] = useState<UnifiedProject | null>(null);
   const [servers, setServers] = useState<any[]>([]);
+
+  // Search and filters
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'downloads' | 'rating' | 'updated'>('downloads');
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [filterAuthor, setFilterAuthor] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const CARD_PAGE_SIZE = 9;
 
   // Fetch servers on mount
   useEffect(() => {
@@ -36,57 +55,43 @@ export const ModpacksPage = () => {
       }
     };
     fetchServers();
+    loadProviders();
   }, []);
 
-  // Search and filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'downloads' | 'rating' | 'updated'>('downloads');
-  const [filterTags, setFilterTags] = useState<string[]>([]);
-  const [filterAuthor, setFilterAuthor] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
-  const [cardPage, setCardPage] = useState(1);
-  const CARD_PAGE_SIZE = 9;
-
-  // Fetch ALL modpacks from Modtale API once on mount
+  // Set classification to MODPACK and trigger search when provider changes
   useEffect(() => {
-    if (apiKey && modpacks.length === 0) {
-      fetchAllModpacks();
+    if (isProviderConfigured) {
+      setSearchClassification('MODPACK');
+      search();
     }
-  }, [apiKey]);
+  }, [selectedProvider, isProviderConfigured]);
 
-  const fetchAllModpacks = async () => {
-    if (!apiKey) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Fetch all modpacks (up to 2000) in one request - page is 0-indexed
-      const response = await searchProjects({
-        classification: 'MODPACK',
-        page: 0,
-        limit: 2000,
-        sortBy: 'downloads',
-        sortOrder: 'desc',
-      });
-
-      setModpacks(response.projects);
-      setTotalResults(response.total);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch modpacks';
-      setError(errorMessage);
-      toast.error('Failed to load modpacks', errorMessage);
-      console.error('Modtale API error:', err);
-    } finally {
-      setLoading(false);
+  // Get projects from search results
+  const allProjects = useMemo(() => {
+    if (selectedProvider === 'all' && multiSearchResults) {
+      return modProviderApi.mergeSearchResults(multiSearchResults);
     }
-  };
+    return searchResults?.projects || [];
+  }, [selectedProvider, searchResults, multiSearchResults]);
+
+  // Filter to only modpacks
+  const modpacks = useMemo(() => {
+    return allProjects.filter(p => p.classification === 'MODPACK');
+  }, [allProjects]);
+
+  // Get total count
+  const totalResults = useMemo(() => {
+    if (selectedProvider === 'all' && multiSearchResults) {
+      return multiSearchResults.totalAcrossProviders;
+    }
+    return searchResults?.total || 0;
+  }, [selectedProvider, searchResults, multiSearchResults]);
 
   // Extract unique tags and authors for filter dropdowns
   const uniqueTags = useMemo(() => {
     const tagSet = new Set<string>();
     modpacks.forEach(modpack => {
-      modpack.tags?.forEach(tag => tagSet.add(tag.name));
+      modpack.categories?.forEach(cat => tagSet.add(cat.name));
     });
     return Array.from(tagSet).sort();
   }, [modpacks]);
@@ -106,8 +111,8 @@ export const ModpacksPage = () => {
     let filtered = modpacks;
 
     // Filter by search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+    if (localSearchQuery.trim()) {
+      const query = localSearchQuery.toLowerCase();
       filtered = filtered.filter(m =>
         m.title.toLowerCase().includes(query) ||
         m.description.toLowerCase().includes(query) ||
@@ -115,11 +120,11 @@ export const ModpacksPage = () => {
       );
     }
 
-    // Filter by tags (multiple)
+    // Filter by tags (categories)
     if (filterTags.length > 0) {
       filtered = filtered.filter(m =>
         filterTags.every(filterTag =>
-          m.tags?.some(tag => tag.name === filterTag)
+          m.categories?.some(cat => cat.name === filterTag)
         )
       );
     }
@@ -132,7 +137,7 @@ export const ModpacksPage = () => {
     // Sort
     filtered = [...filtered].sort((a, b) => {
       if (sortBy === 'downloads') return b.downloads - a.downloads;
-      if (sortBy === 'rating') return b.rating - a.rating;
+      if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
       if (sortBy === 'updated') {
         const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
         const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -142,9 +147,10 @@ export const ModpacksPage = () => {
     });
 
     return filtered;
-  }, [modpacks, searchQuery, filterTags, filterAuthor, sortBy]);
+  }, [modpacks, localSearchQuery, filterTags, filterAuthor, sortBy]);
 
   // Paginate modpacks for card view
+  const cardPage = Math.ceil(searchPage);
   const paginatedModpacks = useMemo(() => {
     const startIndex = (cardPage - 1) * CARD_PAGE_SIZE;
     return filteredModpacks.slice(startIndex, startIndex + CARD_PAGE_SIZE);
@@ -152,32 +158,34 @@ export const ModpacksPage = () => {
 
   const totalCardPages = Math.ceil(filteredModpacks.length / CARD_PAGE_SIZE);
 
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCardPage(1);
-  }, [searchQuery, filterTags, filterAuthor, sortBy]);
-
-  const handleSearch = (value: string) => {
-    setSearchQuery(value);
+  const handleSearch = () => {
+    setStoreSearchQuery(localSearchQuery);
+    search();
   };
 
-  const handleSortChange = (value: 'downloads' | 'rating' | 'updated') => {
-    setSortBy(value);
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
   };
 
-  // Generate Modtale project URL
-  const getModtaleUrl = (project: ModtaleProject) => {
-    const titleSlug = project.title.toLowerCase().replace(/\s+/g, '-');
-    const classification = project.classification.toLowerCase();
-    return `https://modtale.net/${classification}/${titleSlug}-${project.id}`;
+  // Generate project URL based on provider
+  const getProjectUrl = (project: UnifiedProject) => {
+    if (project.providerId === 'modtale') {
+      const titleSlug = project.title.toLowerCase().replace(/\s+/g, '-');
+      return `https://modtale.net/modpack/${titleSlug}-${project.id}`;
+    } else if (project.providerId === 'curseforge') {
+      return `https://www.curseforge.com/hytale/modpacks/${project.slug}`;
+    }
+    return '#';
   };
 
-  const handleInstallClick = (project: ModtaleProject) => {
+  const handleInstallClick = (project: UnifiedProject) => {
     setSelectedProject(project);
     setShowInstallModal(true);
   };
 
-  const handleInstall = async (serverId: string, projectId: string, versionId: string) => {
+  const handleInstall = async (serverId: string, projectId: string, versionId: string, _providerId: string) => {
     if (!selectedProject) return;
 
     const server = servers.find(s => s.id === serverId);
@@ -210,13 +218,14 @@ export const ModpacksPage = () => {
     try {
       updateStatus(queueId, 'installing');
       await api.installMod(serverId, {
+        providerId: selectedProject.providerId,
         projectId,
         projectTitle: selectedProject.title,
         projectIconUrl: selectedProject.iconUrl,
         versionId,
         versionName: version?.version || 'Latest',
         classification: selectedProject.classification,
-        fileSize: 0,
+        fileSize: version?.fileSize || 0,
       });
       updateStatus(queueId, 'completed');
       toast.success('Installation complete', `${selectedProject.title} has been installed`);
@@ -234,7 +243,7 @@ export const ModpacksPage = () => {
   };
 
   // DataTable columns
-  const columns: Column<ModtaleProject>[] = [
+  const columns: Column<UnifiedProject>[] = [
     {
       key: 'title',
       label: 'Modpack',
@@ -247,7 +256,10 @@ export const ModpacksPage = () => {
             className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
           />
           <div className="min-w-0">
-            <p className="font-medium text-text-light-primary dark:text-text-primary truncate">{modpack.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-text-light-primary dark:text-text-primary truncate">{modpack.title}</p>
+              {selectedProvider === 'all' && <ProviderBadge providerId={modpack.providerId} />}
+            </div>
             <p className="text-sm text-text-light-muted dark:text-text-muted truncate">{modpack.description}</p>
           </div>
         </div>
@@ -262,20 +274,20 @@ export const ModpacksPage = () => {
       ),
     },
     {
-      key: 'tags',
-      label: 'Tags',
+      key: 'categories',
+      label: 'Categories',
       sortable: false,
       className: 'hidden md:table-cell',
       render: (modpack) => (
         <div className="flex flex-wrap gap-1">
-          {modpack.tags.slice(0, 2).map((tag) => (
-            <Badge key={tag.id} size="sm" variant="info">
-              {tag.name}
+          {modpack.categories.slice(0, 2).map((cat) => (
+            <Badge key={cat.id} size="sm" variant="info">
+              {cat.name}
             </Badge>
           ))}
-          {modpack.tags.length > 2 && (
+          {modpack.categories.length > 2 && (
             <Badge size="sm" variant="default">
-              +{modpack.tags.length - 2}
+              +{modpack.categories.length - 2}
             </Badge>
           )}
         </div>
@@ -296,7 +308,7 @@ export const ModpacksPage = () => {
       sortable: true,
       className: 'text-right',
       render: (modpack) => (
-        <span className="whitespace-nowrap">⭐ {modpack.rating.toFixed(1)}</span>
+        <span className="whitespace-nowrap">{modpack.rating?.toFixed(1) || '-'}</span>
       ),
     },
     {
@@ -318,7 +330,7 @@ export const ModpacksPage = () => {
             variant="ghost"
             size="sm"
             icon={<ExternalLink size={14} />}
-            onClick={() => window.open(getModtaleUrl(modpack), '_blank')}
+            onClick={() => window.open(getProjectUrl(modpack), '_blank')}
           >
             View
           </Button>
@@ -330,24 +342,18 @@ export const ModpacksPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-heading font-bold text-text-light-primary dark:text-text-primary">Modpacks</h1>
-        <p className="text-text-light-muted dark:text-text-muted mt-1">
-          Pre-configured mod collections for quick setup {totalResults > 0 && `(${totalResults.toLocaleString()} available)`}
-          {' • '}Powered by{' '}
-          <a
-            href="https://modtale.net"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent-primary hover:underline"
-          >
-            Modtale
-          </a>
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-heading font-bold text-text-light-primary dark:text-text-primary">Modpacks</h1>
+          <p className="text-text-light-muted dark:text-text-muted mt-1">
+            Pre-configured mod collections for quick setup {totalResults > 0 && `(${totalResults.toLocaleString()} available)`}
+          </p>
+        </div>
+        <ProviderSelector />
       </div>
 
       {/* Search and Filters */}
-      {apiKey && (
+      {isProviderConfigured && (
         <Card variant="glass" className="relative z-10 overflow-visible">
           <CardContent className="py-4 overflow-visible">
             <div className="flex flex-col gap-4">
@@ -357,13 +363,14 @@ export const ModpacksPage = () => {
                 <Input
                   type="text"
                   placeholder="Search modpacks..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
+                  value={localSearchQuery}
+                  onChange={(e) => setLocalSearchQuery(e.target.value)}
+                  onKeyPress={handleKeyPress}
                   className="pl-10 pr-10"
                 />
-                {searchQuery && (
+                {localSearchQuery && (
                   <button
-                    onClick={() => handleSearch('')}
+                    onClick={() => setLocalSearchQuery('')}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-light-muted dark:text-text-muted hover:text-text-light-primary dark:hover:text-text-primary"
                   >
                     <X size={20} />
@@ -379,10 +386,10 @@ export const ModpacksPage = () => {
                     options={uniqueTags}
                     value={filterTags}
                     onChange={(value) => setFilterTags(value as string[])}
-                    placeholder="All Tags"
-                    searchPlaceholder="Search tags..."
+                    placeholder="All Categories"
+                    searchPlaceholder="Search categories..."
                     multiple={true}
-                    allLabel="All Tags"
+                    allLabel="All Categories"
                   />
                 </div>
 
@@ -403,7 +410,7 @@ export const ModpacksPage = () => {
                 <div className="w-full md:w-48">
                   <select
                     value={sortBy}
-                    onChange={(e) => handleSortChange(e.target.value as 'downloads' | 'rating' | 'updated')}
+                    onChange={(e) => setSortBy(e.target.value as 'downloads' | 'rating' | 'updated')}
                     className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-text-light-primary dark:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary"
                   >
                     <option value="downloads">Most Downloads</option>
@@ -443,18 +450,20 @@ export const ModpacksPage = () => {
         </Card>
       )}
 
-      {/* API Key Warning */}
-      {!apiKey && (
+      {/* Provider Not Configured Warning */}
+      {!isProviderConfigured && (
         <Card variant="glass">
           <CardContent>
             <div className="flex items-center gap-4 py-4">
               <AlertCircle size={32} className="text-warning" />
               <div className="flex-1">
                 <h3 className="font-heading font-semibold text-text-light-primary dark:text-text-primary">
-                  Modtale API Key Required
+                  {selectedProvider === 'all'
+                    ? 'No Mod Providers Configured'
+                    : `${providers.find(p => p.id === selectedProvider)?.displayName || 'Provider'} Not Configured`}
                 </h3>
                 <p className="text-sm text-text-light-muted dark:text-text-muted mt-1">
-                  To browse and install modpacks from Modtale, please configure your Enterprise API key in settings.
+                  Configure API keys for mod providers in settings to browse and install modpacks.
                 </p>
               </div>
               <Button
@@ -462,7 +471,7 @@ export const ModpacksPage = () => {
                 icon={<Settings size={18} />}
                 onClick={() => navigate('/settings')}
               >
-                Configure API Key
+                Configure Providers
               </Button>
             </div>
           </CardContent>
@@ -470,15 +479,15 @@ export const ModpacksPage = () => {
       )}
 
       {/* Loading State */}
-      {loading && (
+      {searchLoading && (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-accent-primary border-t-transparent"></div>
-          <p className="text-text-light-muted dark:text-text-muted mt-4">Loading modpacks from Modtale...</p>
+          <p className="text-text-light-muted dark:text-text-muted mt-4">Loading modpacks...</p>
         </div>
       )}
 
       {/* Error State */}
-      {error && !loading && (
+      {searchError && !searchLoading && (
         <Card variant="glass">
           <CardContent>
             <div className="flex items-center gap-4 py-4">
@@ -487,9 +496,9 @@ export const ModpacksPage = () => {
                 <h3 className="font-heading font-semibold text-text-light-primary dark:text-text-primary">
                   Failed to Load Modpacks
                 </h3>
-                <p className="text-sm text-text-light-muted dark:text-text-muted mt-1">{error}</p>
+                <p className="text-sm text-text-light-muted dark:text-text-muted mt-1">{searchError}</p>
               </div>
-              <Button variant="secondary" onClick={fetchAllModpacks}>
+              <Button variant="secondary" onClick={() => search()}>
                 Retry
               </Button>
             </div>
@@ -498,14 +507,14 @@ export const ModpacksPage = () => {
       )}
 
       {/* Modpacks List */}
-      {apiKey && !loading && !error && modpacks.length > 0 && (
+      {isProviderConfigured && !searchLoading && !searchError && (
         <div className="space-y-4">
           {/* Card View */}
           {viewMode === 'card' && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {paginatedModpacks.map((modpack) => (
-                <Card key={modpack.id} variant="glass" hover>
+                <Card key={`${modpack.providerId}-${modpack.id}`} variant="glass" hover>
                   <CardHeader>
                     <div className="flex items-center gap-3">
                       <img
@@ -514,7 +523,10 @@ export const ModpacksPage = () => {
                         className="w-12 h-12 rounded-lg object-cover"
                       />
                       <div className="flex-1 min-w-0">
-                        <CardTitle className="truncate">{modpack.title}</CardTitle>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="truncate">{modpack.title}</CardTitle>
+                          {selectedProvider === 'all' && <ProviderBadge providerId={modpack.providerId} />}
+                        </div>
                         <CardDescription className="truncate">{modpack.author.username}</CardDescription>
                       </div>
                     </div>
@@ -523,17 +535,17 @@ export const ModpacksPage = () => {
                   <CardContent className="space-y-3">
                     <p className="text-sm text-text-light-muted dark:text-text-muted line-clamp-2">{modpack.description}</p>
 
-                    {/* Tags */}
-                    {modpack.tags && modpack.tags.length > 0 && (
+                    {/* Categories */}
+                    {modpack.categories && modpack.categories.length > 0 && (
                       <div className="flex flex-wrap gap-1">
-                        {modpack.tags.slice(0, 3).map((tag) => (
-                          <Badge key={tag.id} size="sm" variant="info">
-                            {tag.name}
+                        {modpack.categories.slice(0, 3).map((cat) => (
+                          <Badge key={cat.id} size="sm" variant="info">
+                            {cat.name}
                           </Badge>
                         ))}
-                        {modpack.tags.length > 3 && (
+                        {modpack.categories.length > 3 && (
                           <Badge size="sm" variant="default">
-                            +{modpack.tags.length - 3}
+                            +{modpack.categories.length - 3}
                           </Badge>
                         )}
                       </div>
@@ -541,7 +553,7 @@ export const ModpacksPage = () => {
 
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-text-light-muted dark:text-text-muted">
-                        ⭐ {modpack.rating.toFixed(1)}
+                        {modpack.rating?.toFixed(1) || '-'}
                       </span>
                       <span className="text-text-light-muted dark:text-text-muted">
                         {modpack.downloads.toLocaleString()} downloads
@@ -561,7 +573,7 @@ export const ModpacksPage = () => {
                         variant="ghost"
                         size="sm"
                         icon={<ExternalLink size={14} />}
-                        onClick={() => window.open(getModtaleUrl(modpack), '_blank')}
+                        onClick={() => window.open(getProjectUrl(modpack), '_blank')}
                       >
                         View
                       </Button>
@@ -583,7 +595,7 @@ export const ModpacksPage = () => {
                       variant="ghost"
                       size="sm"
                       icon={<ChevronLeft size={16} />}
-                      onClick={() => setCardPage(p => Math.max(1, p - 1))}
+                      onClick={() => setSearchPage(Math.max(1, cardPage - 1))}
                       disabled={cardPage === 1}
                     >
                       Previous
@@ -595,7 +607,7 @@ export const ModpacksPage = () => {
                       variant="ghost"
                       size="sm"
                       icon={<ChevronRight size={16} />}
-                      onClick={() => setCardPage(p => Math.min(totalCardPages, p + 1))}
+                      onClick={() => setSearchPage(Math.min(totalCardPages, cardPage + 1))}
                       disabled={cardPage === totalCardPages}
                     >
                       Next
@@ -611,19 +623,18 @@ export const ModpacksPage = () => {
             <DataTable
               data={filteredModpacks}
               columns={columns}
-              keyExtractor={(modpack) => modpack.id}
+              keyExtractor={(modpack) => `${modpack.providerId}-${modpack.id}`}
               itemsPerPage={10}
               searchable={true}
               exportable={true}
             />
           )}
-        </div>
-      )}
 
-      {/* Empty State */}
-      {apiKey && !loading && !error && modpacks.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-text-light-muted dark:text-text-muted">No modpacks available</p>
+          {filteredModpacks.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-text-light-muted dark:text-text-muted">No modpacks found matching your criteria</p>
+            </div>
+          )}
         </div>
       )}
 

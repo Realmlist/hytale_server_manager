@@ -1,22 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Modal, ModalFooter, Button, Badge, StatusIndicator } from '../ui';
 import { Server as ServerIcon, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
-import { getVersionDependencies } from '../../services/modtaleApi';
-import type { ModtaleProject, ModtaleDependency } from '../../types/modtale';
+import * as modProviderApi from '../../services/modProviderApi';
+import type { UnifiedProject, UnifiedDependency } from '../../types/modProvider';
 import api from '../../services/api';
 
 interface ServerSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  project: ModtaleProject | null;
-  onInstall: (serverId: string, projectId: string, versionId: string) => void;
+  project: UnifiedProject | null;
+  onInstall: (serverId: string, projectId: string, versionId: string, providerId: string) => void;
 }
 
 export const ServerSelectionModal = ({ isOpen, onClose, project, onInstall }: ServerSelectionModalProps) => {
   const [servers, setServers] = useState<any[]>([]);
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
-  const [dependencies, setDependencies] = useState<ModtaleDependency[]>([]);
+  const [dependencies, setDependencies] = useState<UnifiedDependency[]>([]);
   const [loadingDeps, setLoadingDeps] = useState(false);
   const [depsError, setDepsError] = useState<string | null>(null);
 
@@ -60,7 +60,7 @@ export const ServerSelectionModal = ({ isOpen, onClose, project, onInstall }: Se
     setDepsError(null);
 
     try {
-      const deps = await getVersionDependencies(project.id, selectedVersion);
+      const deps = await modProviderApi.getVersionDependencies(project.providerId, project.id, selectedVersion);
       setDependencies(deps);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch dependencies';
@@ -75,7 +75,7 @@ export const ServerSelectionModal = ({ isOpen, onClose, project, onInstall }: Se
     if (!selectedServer || !project || !selectedVersion) {
       return;
     }
-    onInstall(selectedServer, project.id, selectedVersion);
+    onInstall(selectedServer, project.id, selectedVersion, project.providerId);
     onClose();
   };
 
@@ -127,7 +127,7 @@ export const ServerSelectionModal = ({ isOpen, onClose, project, onInstall }: Se
             className="w-full px-4 py-2 bg-white dark:bg-primary-bg border border-gray-300 dark:border-gray-700 rounded-lg text-text-light-primary dark:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
           >
             {project.versions?.map((version) => {
-              const dateStr = version.createdAt || (version as any).createdDate || (version as any).releaseDate;
+              const dateStr = version.releaseDate;
               const dateDisplay = dateStr ? new Date(dateStr).toLocaleDateString() : '';
               return (
                 <option key={version.id} value={version.id}>

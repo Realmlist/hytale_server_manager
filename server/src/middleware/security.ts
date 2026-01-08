@@ -6,22 +6,29 @@ import config from '../config';
  * Configure security headers using Helmet
  */
 export function configureSecurityHeaders(app: Express): void {
-  // Use Helmet's default security headers
-  app.use(helmet());
+  // Use Helmet with HSTS disabled by default (requires explicit opt-in via ENABLE_HSTS)
+  // Also disable cross-origin policies that can cause issues with HTTP connections
+  app.use(helmet({
+    hsts: false, // Disabled by default - enable via ENABLE_HSTS env var
+    contentSecurityPolicy: false, // We configure CSP separately below
+    crossOriginOpenerPolicy: false, // Disable COOP - causes issues with HTTP
+    crossOriginEmbedderPolicy: false, // Disable COEP - causes issues with HTTP
+  }));
 
-  // Content Security Policy
+  // Content Security Policy (without upgrade-insecure-requests to allow HTTP)
   app.use(
     helmet.contentSecurityPolicy({
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for development
-        imgSrc: ["'self'", 'data:', 'https:'],
+        imgSrc: ["'self'", 'data:', 'https:', 'http:'],
         connectSrc: ["'self'"],
         fontSrc: ["'self'"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
         frameSrc: ["'none'"],
+        // Explicitly NOT including upgrade-insecure-requests to allow HTTP
       },
     })
   );
