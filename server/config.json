@@ -12,6 +12,10 @@
   "backupsBasePath": "./data/backups",
   "logsPath": "./data/logs",
   "metricsRetentionDays": 30,
+  "https": {
+    "enabled": true,
+    "autoGenerate": true
+  },
   "discord": {
     "enabled": false,
     "webhookUrl": "",

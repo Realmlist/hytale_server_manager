@@ -3,10 +3,12 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
-import { Server as HTTPServer } from 'http';
+import { Server as HTTPServer, createServer as createHTTPServer } from 'http';
+import { Server as HTTPSServer, createServer as createHTTPSServer } from 'https';
 import { Server as SocketServer } from 'socket.io';
 import config, { getBasePath_ } from './config';
 import logger from './utils/logger';
+import { loadOrGenerateCertificates, loadCustomCertificates, CertificateInfo } from './utils/certificates';
 
 // Services
 import { ServerService } from './services/ServerService';
@@ -56,9 +58,11 @@ import { activityLoggerMiddleware } from './middleware/activityLogger';
 
 export class App {
   public express: Express;
-  public httpServer: HTTPServer;
+  public httpServer: HTTPServer | HTTPSServer;
   public io: SocketServer;
   private prisma: PrismaClient;
+  private isHttps: boolean = false;
+  private certInfo?: CertificateInfo;
 
   // Services
   private serverService: ServerService;
@@ -86,7 +90,10 @@ export class App {
 
   constructor() {
     this.express = express();
-    this.httpServer = new HTTPServer(this.express);
+
+    // HTTP server will be created in start() to handle async certificate loading
+    // Create a temporary HTTP server for type compatibility (will be replaced in start())
+    this.httpServer = createHTTPServer(this.express);
     this.io = new SocketServer(this.httpServer, {
       cors: {
         origin: config.corsOrigin,
@@ -152,6 +159,32 @@ export class App {
     this.initializeRoutes();
     this.initializeWebSocket();
     this.initializeErrorHandlers();
+  }
+
+  /**
+   * Load SSL certificates for HTTPS
+   */
+  private async loadCertificates(): Promise<CertificateInfo> {
+    // Check for custom certificates first
+    if (config.https.certPath && config.https.keyPath) {
+      logger.info('[Certificates] Loading custom SSL certificates');
+      return loadCustomCertificates(config.https.certPath, config.https.keyPath);
+    }
+
+    // Auto-generate if enabled
+    if (config.https.autoGenerate) {
+      logger.info('[Certificates] Auto-generating SSL certificates');
+      return await loadOrGenerateCertificates({
+        certsDir: config.certsPath,
+        commonName: 'Hytale Server Manager',
+        validityDays: 365,
+      });
+    }
+
+    throw new Error(
+      'HTTPS is enabled but no certificates are configured. ' +
+        'Either set SSL_CERT_PATH and SSL_KEY_PATH, or enable auto-generation with HTTPS_AUTO_GENERATE=true'
+    );
   }
 
   /**
@@ -305,6 +338,43 @@ export class App {
    */
   async start(): Promise<void> {
     try {
+      // Create HTTPS or HTTP server
+      if (config.nodeEnv === 'production' && config.https.enabled) {
+        this.certInfo = await this.loadCertificates();
+
+        // Close the temporary HTTP server
+        this.io.close();
+
+        // Create HTTPS server
+        this.httpServer = createHTTPSServer(
+          {
+            cert: this.certInfo.cert,
+            key: this.certInfo.key,
+          },
+          this.express
+        );
+        this.isHttps = true;
+
+        // Recreate Socket.IO with HTTPS server
+        this.io = new SocketServer(this.httpServer, {
+          cors: {
+            origin: config.corsOrigin,
+            methods: ['GET', 'POST'],
+          },
+          pingInterval: config.wsPingInterval,
+          pingTimeout: config.wsPingTimeout,
+        });
+
+        // Reinitialize WebSocket event handlers
+        this.serverEvents = new ServerEvents(this.io, this.serverService, this.consoleService);
+        this.consoleEvents = new ConsoleEvents(this.io, this.serverService, this.consoleService);
+        this.initializeWebSocket();
+
+        logger.info('[App] HTTPS server created with SSL certificates');
+      } else {
+        logger.info('[App] HTTP server created (development mode or HTTPS disabled)');
+      }
+
       // Connect to database
       await this.prisma.$connect();
       logger.info('Database connected');
@@ -347,11 +417,19 @@ export class App {
       await this.automationRulesService.initialize();
       logger.info('Automation rules initialized');
 
-      // Start HTTP server
+      // Start server
       this.httpServer.listen(config.port, () => {
-        logger.info(`Server started on port ${config.port}`);
+        const protocol = this.isHttps ? 'https' : 'http';
+        logger.info(`Server started on ${protocol}://0.0.0.0:${config.port}`);
         logger.info(`Environment: ${config.nodeEnv}`);
         logger.info(`CORS origin: ${config.corsOrigin}`);
+        if (this.isHttps && this.certInfo) {
+          logger.info(`SSL Certificate: ${this.certInfo.certPath}`);
+          if (this.certInfo.generated) {
+            logger.info('Using auto-generated self-signed certificate');
+            logger.warn('For production use, consider using a trusted certificate from a CA');
+          }
+        }
       });
     } catch (error) {
       logger.error('Failed to start server:', error);

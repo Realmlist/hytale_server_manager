@@ -88,6 +88,15 @@ export interface AppConfig {
     autoDownload: boolean;
     githubRepo: string;
   };
+
+  // HTTPS/SSL
+  https: {
+    enabled: boolean;
+    certPath?: string;
+    keyPath?: string;
+    autoGenerate: boolean;
+  };
+  certsPath: string;
 }
 
 /**
@@ -186,6 +195,15 @@ const defaults: AppConfig = {
     autoDownload: false,
     githubRepo: 'yourusername/hytale-server-manager',
   },
+
+  // HTTPS/SSL - enabled by default in production
+  https: {
+    enabled: true, // Auto-enables in production
+    certPath: undefined,
+    keyPath: undefined,
+    autoGenerate: true, // Generate self-signed certs if no custom ones provided
+  },
+  certsPath: './data/certs',
 };
 
 /**
@@ -277,6 +295,17 @@ function loadEnvConfig(): Partial<AppConfig> {
     };
   }
 
+  // HTTPS
+  if (process.env.HTTPS_ENABLED !== undefined || process.env.SSL_CERT_PATH || process.env.SSL_KEY_PATH) {
+    envConfig.https = {
+      enabled: process.env.HTTPS_ENABLED !== 'false', // Default true unless explicitly disabled
+      certPath: process.env.SSL_CERT_PATH,
+      keyPath: process.env.SSL_KEY_PATH,
+      autoGenerate: process.env.HTTPS_AUTO_GENERATE !== 'false',
+    };
+  }
+  if (process.env.CERTS_PATH) envConfig.certsPath = process.env.CERTS_PATH;
+
   return envConfig;
 }
 
@@ -330,6 +359,7 @@ function resolvePaths(config: AppConfig): AppConfig {
     serversBasePath: resolvePath(config.serversBasePath),
     backupsBasePath: resolvePath(config.backupsBasePath),
     logsPath: resolvePath(config.logsPath),
+    certsPath: resolvePath(config.certsPath),
     databaseUrl: config.databaseUrl.startsWith('file:')
       ? `file:${resolvePath(config.databaseUrl.replace('file:', ''))}`
       : config.databaseUrl,
@@ -357,6 +387,7 @@ function ensureDirectories(config: AppConfig): void {
     config.serversBasePath,
     config.backupsBasePath,
     config.logsPath,
+    config.certsPath,
     path.dirname(config.databaseUrl.replace('file:', '')),
   ];
 
