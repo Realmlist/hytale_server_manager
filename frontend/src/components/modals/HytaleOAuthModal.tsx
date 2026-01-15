@@ -25,7 +25,6 @@ interface HytaleOAuthModalProps {
 
 export const HytaleOAuthModal = ({ isOpen, onClose, onSuccess }: HytaleOAuthModalProps) => {
   const {
-    fetchStatus,
     startOAuth,
     cancelOAuth,
     isStartingOAuth,
