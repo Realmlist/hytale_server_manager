@@ -94,8 +94,9 @@ export function useUpdateSession(
       return api.getUpdateSession(sessionId!);
     },
     enabled: !!sessionId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Poll while update is in progress
+      const data = query.state.data;
       if (data && data.status !== 'completed' && data.status !== 'failed' && data.status !== 'rolled_back') {
         return 2000; // Poll every 2 seconds
       }

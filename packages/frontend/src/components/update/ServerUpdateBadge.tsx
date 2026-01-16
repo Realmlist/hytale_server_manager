@@ -11,7 +11,7 @@ interface ServerUpdateBadgeProps {
 
 export const ServerUpdateBadge = ({
   serverId,
-  currentVersion,
+  currentVersion: _currentVersion,
   compact = false,
   onUpdateClick,
 }: ServerUpdateBadgeProps) => {
@@ -20,7 +20,8 @@ export const ServerUpdateBadge = ({
     enabled: !!serverId,
   });
 
-  const refreshCheck = useRefreshVersionCheck();
+  // Available for future use (e.g., manual refresh button)
+  const _refreshCheck = useRefreshVersionCheck();
 
   if (isLoading) {
     return (
