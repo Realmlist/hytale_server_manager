@@ -66,6 +66,30 @@ export const HytaleServerDownloadSection = ({
     }
   }, [downloadSession?.status, onDownloadComplete]);
 
+  // Auto-fetch version when prerequisites are met
+  useEffect(() => {
+    const shouldAutoFetch =
+      status?.binaryInstalled &&
+      status?.isAuthenticated &&
+      !isCheckingVersion &&
+      !gameVersion &&
+      !downloadSession;
+
+    if (shouldAutoFetch) {
+      checkVersion(selectedPatchline).catch(() => {
+        // Silent fail for auto-fetch - user can manually retry
+      });
+    }
+  }, [
+    status?.binaryInstalled,
+    status?.isAuthenticated,
+    isCheckingVersion,
+    gameVersion,
+    downloadSession,
+    selectedPatchline,
+    checkVersion
+  ]);
+
   const handleInstallBinary = useCallback(async () => {
     setIsInstalling(true);
     setLocalError(null);
@@ -87,6 +111,19 @@ export const HytaleServerDownloadSection = ({
       setLocalError(err.message || 'Failed to check version');
     }
   }, [checkVersion, selectedPatchline, clearError]);
+
+  const handlePatchlineChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newPatchline = e.target.value;
+    setSelectedPatchline(newPatchline);
+
+    if (status?.binaryInstalled && status?.isAuthenticated && !isCheckingVersion) {
+      clearError();
+      setLocalError(null);
+      checkVersion(newPatchline).catch((err: any) => {
+        setLocalError(err.message || 'Failed to fetch version');
+      });
+    }
+  }, [status, isCheckingVersion, checkVersion, clearError]);
 
   const handleStartDownload = useCallback(async () => {
     if (!serverPath) {
@@ -215,7 +252,7 @@ export const HytaleServerDownloadSection = ({
         </label>
         <select
           value={selectedPatchline}
-          onChange={(e) => setSelectedPatchline(e.target.value)}
+          onChange={handlePatchlineChange}
           className="w-full px-4 py-2 bg-white dark:bg-primary-bg border border-gray-300 dark:border-gray-700 rounded-lg text-text-light-primary dark:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
           disabled={downloadSession ? ['downloading', 'extracting', 'validating'].includes(downloadSession.status) : false}
         >
@@ -260,7 +297,7 @@ export const HytaleServerDownloadSection = ({
             ) : (
               <RefreshCw size={16} className="mr-2" />
             )}
-            {isCheckingVersion ? 'Checking...' : 'Check Version'}
+            {isCheckingVersion ? 'Checking...' : 'Refresh Version'}
           </Button>
           <Button
             variant="primary"

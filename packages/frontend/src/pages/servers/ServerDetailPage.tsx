@@ -295,15 +295,16 @@ export const ServerDetailPage = () => {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <Card variant="glass">
+        <Card variant="glass" className="opacity-50">
           <CardContent className="flex items-center justify-between">
             <div>
               <p className="text-text-light-muted dark:text-text-muted text-sm">Players</p>
               <p className="text-2xl font-heading font-bold text-text-light-primary dark:text-text-primary">
-                {currentPlayers} / {server.maxPlayers}
+                - / -
               </p>
+              <p className="text-xs text-text-light-muted dark:text-text-muted">Coming Soon</p>
             </div>
-            <Users size={32} className="text-accent-primary" />
+            <Users size={32} className="text-text-muted" />
           </CardContent>
         </Card>
 
@@ -423,17 +424,17 @@ export const ServerDetailPage = () => {
               )}
             </div>
 
-            <div>
+            <div className="opacity-50">
               <div className="flex justify-between mb-2">
                 <span className="text-text-light-muted dark:text-text-muted text-sm">Player Slots</span>
                 <span className="text-text-light-primary dark:text-text-primary font-medium">
-                  {currentPlayers} / {server.maxPlayers}
+                  - / - <span className="text-xs">(Coming Soon)</span>
                 </span>
               </div>
               <div className="h-3 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-accent-primary"
-                  style={{ width: `${(currentPlayers / server.maxPlayers) * 100}%` }}
+                  style={{ width: '0%' }}
                 />
               </div>
             </div>
