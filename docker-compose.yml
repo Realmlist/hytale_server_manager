@@ -38,6 +38,8 @@ services:
       - hsm-logs:/app/data/logs
       # SSL certificates (if using HTTPS)
       - hsm-certs:/app/data/certs
+      # Hytale downloader tool
+      - hsm-downloader:/app/data/hytale-downloader
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
@@ -51,3 +53,4 @@ volumes:
   hsm-backups:
   hsm-logs:
   hsm-certs:
+  hsm-downloader:
