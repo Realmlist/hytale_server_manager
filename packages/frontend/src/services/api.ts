@@ -860,6 +860,13 @@ class ApiService {
     });
   }
 
+  async deleteAlertsBatch(alertIds: string[]): Promise<{ deleted: number; message: string }> {
+    return this.request<{ deleted: number; message: string }>('/api/alerts/batch', {
+      method: 'DELETE',
+      body: JSON.stringify({ alertIds }),
+    });
+  }
+
   // ===================================
   // Automation Rules
   // ===================================

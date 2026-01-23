@@ -474,9 +474,9 @@ export class JavaServerAdapter implements IServerAdapter {
 
     const installedFiles: InstalledFile[] = [];
     const isModpack = metadata.classification?.toUpperCase() === 'MODPACK';
-    const isZipFile = metadata.fileName?.toLowerCase().endsWith('.zip');
 
-    if (isModpack || isZipFile) {
+    if (isModpack) {
+      // Only modpacks get unzipped
       const AdmZip = (await import('adm-zip')).default;
       const zip = new AdmZip(modFile);
       const zipEntries = zip.getEntries();
@@ -500,6 +500,7 @@ export class JavaServerAdapter implements IServerAdapter {
         }
       }
     } else {
+      // Regular mods - keep as-is with their original extension
       let fileName = metadata.fileName;
       if (!fileName) {
         const sanitizedTitle = metadata.projectTitle
@@ -508,7 +509,13 @@ export class JavaServerAdapter implements IServerAdapter {
           .substring(0, 100);
         fileName = `${sanitizedTitle}.jar`;
       }
-      if (!fileName.toLowerCase().endsWith('.jar')) {
+
+      // Determine file type from extension
+      const ext = path.extname(fileName).toLowerCase().slice(1) || 'jar';
+      const isZipFile = ext === 'zip';
+
+      // Only append .jar if file has no recognized extension
+      if (!isZipFile && !fileName.toLowerCase().endsWith('.jar')) {
         fileName = `${fileName}.jar`;
       }
 
@@ -519,7 +526,7 @@ export class JavaServerAdapter implements IServerAdapter {
         fileName,
         filePath: `${modsRelativePath}/${fileName}`,
         fileSize: modFile.length,
-        fileType: 'jar',
+        fileType: isZipFile ? 'zip' : 'jar',
       });
     }
 

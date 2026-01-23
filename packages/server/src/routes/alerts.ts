@@ -58,5 +58,26 @@ export function createAlertsRoutes(alertsService: AlertsService): Router {
     }
   });
 
+  /**
+   * DELETE /api/alerts/batch
+   * Delete multiple alerts at once
+   */
+  router.delete('/batch', requirePermission(PERMISSIONS.ALERTS_MANAGE), async (req: Request, res: Response) => {
+    try {
+      const { alertIds } = req.body;
+
+      if (!Array.isArray(alertIds) || alertIds.length === 0) {
+        res.status(400).json({ error: 'alertIds must be a non-empty array' });
+        return;
+      }
+
+      const deletedCount = await alertsService.deleteAlerts(alertIds);
+      res.json({ deleted: deletedCount, message: `Deleted ${deletedCount} alert(s)` });
+    } catch (error: any) {
+      logger.error('Error deleting alerts in batch:', error);
+      res.status(500).json({ error: error.message || 'Failed to delete alerts' });
+    }
+  });
+
   return router;
 }

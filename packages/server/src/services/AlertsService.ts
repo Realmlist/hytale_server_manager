@@ -216,6 +216,16 @@ export class AlertsService {
   }
 
   /**
+   * Delete multiple alerts
+   */
+  async deleteAlerts(alertIds: string[]): Promise<number> {
+    const result = await prisma.alert.deleteMany({
+      where: { id: { in: alertIds } },
+    });
+    return result.count;
+  }
+
+  /**
    * Get unread count
    */
   async getUnreadCount(serverId?: string): Promise<number> {

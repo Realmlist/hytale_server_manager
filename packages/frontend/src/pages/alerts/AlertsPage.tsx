@@ -184,6 +184,24 @@ export const AlertsPage = () => {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedAlerts.length === 0) return;
+
+    if (!confirm(`Are you sure you want to delete ${selectedAlerts.length} alert(s)?`)) {
+      return;
+    }
+
+    try {
+      const alertIds = selectedAlerts.map(a => a.id);
+      const result = await api.deleteAlertsBatch(alertIds);
+      toast.success(`Deleted ${result.deleted} alert(s)`);
+      await fetchAlerts();
+      setSelectedAlerts([]);
+    } catch (error: any) {
+      toast.error('Failed to delete alerts', error.message);
+    }
+  };
+
   const getSeverityIcon = (severity: string) => {
     switch (severity) {
       case 'critical':
@@ -471,6 +489,15 @@ export const AlertsPage = () => {
                     disabled={selectedAlerts.filter(a => !a.isResolved).length === 0}
                   >
                     Resolve
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    icon={<Trash2 size={14} />}
+                    onClick={handleBulkDelete}
+                    disabled={selectedAlerts.length === 0}
+                  >
+                    Delete Selected
                   </Button>
                 </div>
               }
