@@ -378,7 +378,7 @@ class ServerUpdateService extends EventEmitter {
         const items = await fs.readdir(serverDir);
         for (const item of items) {
           const itemPath = path.join(serverDir, item);
-          await fs.remove(itemPath);
+          await this.removeWithRetry(itemPath);
         }
       }
 
@@ -869,6 +869,28 @@ class ServerUpdateService extends EventEmitter {
 
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Remove a file or directory with retry logic for locked files
+   */
+  private async removeWithRetry(targetPath: string, maxAttempts = 5, delayMs = 1000): Promise<void> {
+    const LOCKED_FILE_ERRORS = ['ENOTEMPTY', 'EBUSY', 'EACCES', 'EPERM', 'ETXTBSY'];
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await fs.remove(targetPath);
+        return;
+      } catch (error: any) {
+        const isLockedError = LOCKED_FILE_ERRORS.includes(error.code);
+        if (isLockedError && attempt < maxAttempts) {
+          logger.debug(`[ServerUpdate] Retry ${attempt}/${maxAttempts} removing ${path.basename(targetPath)}, waiting ${delayMs}ms...`);
+          await this.sleep(delayMs);
+        } else {
+          throw error;
+        }
+      }
+    }
   }
 
   /**
