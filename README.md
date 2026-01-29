@@ -9,7 +9,8 @@
 [![view - Documentation](https://img.shields.io/badge/view-Documentation-blue?style=for-the-badge)](https://nebula-codes.github.io/hytale_server_manager/docs/)
 
 [![Discord](https://discord.com/api/guilds/1463336126805709005/widget.png?style=shield)](https://discord.gg/uANHaJbeBF)
- 
+<!-- Enable server widget in your server settings to enable the Discord shield-->
+<!-- Alt banners: https://github.com/dgibbs64/discord-banners/blob/master/README.md -->
  
 </div>
 
