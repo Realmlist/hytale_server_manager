@@ -1,3 +1,18 @@
+<div align="center">
+
+[![Build and Release](https://github.com/nebula-codes/hytale_server_manager/workflows/Build%20and%20Release/badge.svg)](https://github.com/nebula-codes/hytale_server_manager/actions?query=workflow:"Build+and+Release")
+[![GitHub tag](https://img.shields.io/github/tag/nebula-codes/hytale_server_manager?include_prereleases=&sort=semver&color=blue)](https://github.com/nebula-codes/hytale_server_manager/releases/)
+[![License](https://img.shields.io/badge/License-MIT-blue)](https://github.com/nebula-codes/hytale_server_manager/blob/main/LICENSE)
+[![issues - hytale_server_manager](https://img.shields.io/github/issues/nebula-codes/hytale_server_manager)](https://github.com/nebula-codes/hytale_server_manager/issues)
+
+[![View site - GH Pages](https://img.shields.io/badge/View_site-GH_Pages-2ea44f?style=for-the-badge)](https://nebula-codes.github.io/hytale_server_manager/)
+[![view - Documentation](https://img.shields.io/badge/view-Documentation-blue?style=for-the-badge)](https://nebula-codes.github.io/hytale_server_manager/docs/)
+
+[![Discord](https://discord.com/api/guilds/1463336126805709005/widget.png?style=shield)](https://discord.gg/uANHaJbeBF)
+ 
+ 
+</div>
+
 # Hytale Server Manager
 
 A web-based management dashboard for Hytale game servers. Built with React, TypeScript, and Node.js.
